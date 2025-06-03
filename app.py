@@ -70,9 +70,10 @@ def main():
                 return
             
             # Display results in tabs
-            tab1, tab2, tab3, tab4 = st.tabs([
+            tab1, tab2, tab3, tab4, tab5 = st.tabs([
                 "📁 Files & Tables Analysis", 
                 "📋 Files & Fields Analysis", 
+                "📋 Complete SQL Inventory",
                 "📊 Schema Comparison", 
                 "📈 Individual File Analysis"
             ])
@@ -84,13 +85,16 @@ def main():
                 display_files_fields_analysis(all_parsed_data, combined_fields)
             
             with tab3:
+                display_complete_sql_inventory(all_parsed_data, combined_tables, combined_fields)
+            
+            with tab4:
                 # Create combined data for schema comparison
                 combined_parsed_data = combine_all_parsed_data(all_parsed_data)
                 analyzer = SchemaAnalyzer()
                 analysis_results = analyzer.analyze(combined_parsed_data, schema_df)
                 display_comparison_report(analysis_results)
             
-            with tab4:
+            with tab5:
                 display_individual_file_analysis(all_parsed_data, schema_df)
             
             # Add HTML report generation button
@@ -112,11 +116,70 @@ def main():
             st.info("Please check your file formats and try again.")
     
     elif sql_files and not schema_file:
-        st.warning("⚠️ Please upload a reference schema file to perform comparison.")
+        try:
+            # Process SQL files without schema comparison
+            all_parsed_data = {}
+            combined_tables = {}
+            combined_fields = {}
+            
+            for sql_file in sql_files:
+                sql_content = sql_file.read().decode('utf-8')
+                parser = SQLParser()
+                parsed_data = parser.parse_sql(sql_content)
+                all_parsed_data[sql_file.name] = parsed_data
+                
+                for table, count in parsed_data.get('table_occurrences', {}).items():
+                    if table not in combined_tables:
+                        combined_tables[table] = {}
+                    combined_tables[table][sql_file.name] = count
+                
+                for field, count in parsed_data.get('field_occurrences', {}).items():
+                    if field not in combined_fields:
+                        combined_fields[field] = {}
+                    combined_fields[field][sql_file.name] = count
+            
+            # Display SQL-only analysis tabs
+            tab1, tab2, tab3, tab4 = st.tabs([
+                "📁 Files & Tables Analysis", 
+                "📋 Files & Fields Analysis", 
+                "📋 Complete SQL Inventory",
+                "📈 Individual File Analysis"
+            ])
+            
+            with tab1:
+                display_files_tables_analysis(all_parsed_data, combined_tables)
+            
+            with tab2:
+                display_files_fields_analysis(all_parsed_data, combined_fields)
+            
+            with tab3:
+                display_complete_sql_inventory(all_parsed_data, combined_tables, combined_fields)
+            
+            with tab4:
+                display_individual_file_analysis_no_schema(all_parsed_data)
+            
+            # Add HTML report generation button for SQL-only analysis
+            st.markdown("---")
+            col1, col2, col3 = st.columns([1, 1, 1])
+            with col2:
+                if st.button("📄 Generate Complete SQL Analysis HTML Report", use_container_width=True):
+                    html_report = generate_sql_inventory_html_report(all_parsed_data, combined_tables, combined_fields)
+                    st.download_button(
+                        label="📥 Download SQL Analysis HTML Report",
+                        data=html_report,
+                        file_name="sql_analysis_report.html",
+                        mime="text/html",
+                        use_container_width=True
+                    )
+                    
+        except Exception as e:
+            st.error(f"❌ Error processing SQL files: {str(e)}")
+            st.info("Please check your file formats and try again.")
+    
     elif schema_file and not sql_files:
         st.warning("⚠️ Please upload SQL files for analysis.")
     else:
-        st.info("👆 Please upload both SQL files and reference schema file to begin analysis.")
+        st.info("👆 Please upload SQL files to begin analysis. Upload a reference schema file for additional comparison features.")
         
         # Display help information
         with st.expander("ℹ️ How to use this tool"):
@@ -345,6 +408,197 @@ def display_files_fields_analysis(all_parsed_data, combined_fields):
             file_name="files_fields_analysis.csv",
             mime="text/csv"
         )
+
+def display_complete_sql_inventory(all_parsed_data, combined_tables, combined_fields):
+    """Display complete inventory of all tables and fields found in SQL files"""
+    st.header("📋 Complete SQL Inventory")
+    st.markdown("This section lists all tables and fields discovered in your SQL files, regardless of schema comparison.")
+    
+    # Summary metrics
+    col1, col2, col3, col4 = st.columns(4)
+    total_files = len(all_parsed_data)
+    total_unique_tables = len(combined_tables)
+    total_unique_fields = len(combined_fields)
+    total_statements = sum(len(data.get('statements', [])) for data in all_parsed_data.values())
+    
+    col1.metric("Total SQL Files", total_files)
+    col2.metric("Unique Tables", total_unique_tables)
+    col3.metric("Unique Fields", total_unique_fields)
+    col4.metric("Total SQL Statements", total_statements)
+    
+    # Tables inventory
+    st.subheader("📋 All Tables Found")
+    if combined_tables:
+        # Create table inventory with source files
+        table_inventory = []
+        for table in sorted(combined_tables):
+            source_files = []
+            total_occurrences = 0
+            for file_name, parsed_data in all_parsed_data.items():
+                if table in parsed_data.get('table_occurrences', {}):
+                    count = parsed_data['table_occurrences'][table]
+                    source_files.append(f"{file_name} ({count})")
+                    total_occurrences += count
+            
+            table_inventory.append({
+                'Table Name': table,
+                'Total Occurrences': total_occurrences,
+                'Found in Files': len(source_files),
+                'Source Files': ', '.join(source_files)
+            })
+        
+        # Convert to DataFrame and display
+        table_df = pd.DataFrame(table_inventory)
+        table_df = table_df.sort_values('Total Occurrences', ascending=False)
+        
+        # Filter option for tables
+        table_search = st.text_input("🔍 Search Tables", placeholder="Type to filter tables...")
+        if table_search:
+            table_df = table_df[table_df['Table Name'].str.contains(table_search, case=False, na=False)]
+        
+        st.dataframe(table_df, use_container_width=True)
+        
+        # Download button for tables
+        csv_buffer = io.StringIO()
+        table_df.to_csv(csv_buffer, index=False)
+        st.download_button(
+            label="📥 Download Tables Inventory (CSV)",
+            data=csv_buffer.getvalue(),
+            file_name="sql_tables_inventory.csv",
+            mime="text/csv"
+        )
+    else:
+        st.info("No tables found in the uploaded SQL files.")
+    
+    # Fields inventory
+    st.subheader("🏷️ All Fields Found")
+    if combined_fields:
+        # Create field inventory with source files
+        field_inventory = []
+        for field in sorted(combined_fields):
+            source_files = []
+            total_occurrences = 0
+            for file_name, parsed_data in all_parsed_data.items():
+                if field in parsed_data.get('field_occurrences', {}):
+                    count = parsed_data['field_occurrences'][field]
+                    source_files.append(f"{file_name} ({count})")
+                    total_occurrences += count
+            
+            field_inventory.append({
+                'Field Name': field,
+                'Total Occurrences': total_occurrences,
+                'Found in Files': len(source_files),
+                'Source Files': ', '.join(source_files)
+            })
+        
+        # Convert to DataFrame and display
+        field_df = pd.DataFrame(field_inventory)
+        field_df = field_df.sort_values('Total Occurrences', ascending=False)
+        
+        # Filter and pagination options for fields
+        col1, col2 = st.columns(2)
+        with col1:
+            field_search = st.text_input("🔍 Search Fields", placeholder="Type to filter fields...")
+        with col2:
+            show_top = st.selectbox("Show Top", [50, 100, 200, 500, "All"], index=0)
+        
+        # Apply search filter
+        if field_search:
+            field_df = field_df[field_df['Field Name'].str.contains(field_search, case=False, na=False)]
+        
+        # Apply top N filter
+        if show_top != "All":
+            field_df = field_df.head(int(show_top))
+        
+        st.dataframe(field_df, use_container_width=True)
+        
+        # Download button for fields
+        csv_buffer = io.StringIO()
+        field_df.to_csv(csv_buffer, index=False)
+        st.download_button(
+            label="📥 Download Fields Inventory (CSV)",
+            data=csv_buffer.getvalue(),
+            file_name="sql_fields_inventory.csv",
+            mime="text/csv"
+        )
+        
+        # Generate standalone HTML report for SQL inventory
+        st.markdown("---")
+        col1, col2, col3 = st.columns([1, 1, 1])
+        with col2:
+            if st.button("📄 Generate SQL Inventory HTML Report", use_container_width=True):
+                html_report = generate_sql_inventory_html_report(all_parsed_data, combined_tables, combined_fields)
+                st.download_button(
+                    label="📥 Download SQL Inventory HTML Report",
+                    data=html_report,
+                    file_name="sql_inventory_report.html",
+                    mime="text/html",
+                    use_container_width=True
+                )
+    else:
+        st.info("No fields found in the uploaded SQL files.")
+
+def display_individual_file_analysis_no_schema(all_parsed_data):
+    """Display individual file analysis without schema comparison"""
+    st.header("📈 Individual File Analysis")
+    
+    # File selector
+    selected_file = st.selectbox("Select File for Detailed Analysis", list(all_parsed_data.keys()))
+    
+    if selected_file:
+        parsed_data = all_parsed_data[selected_file]
+        
+        # Display file-specific information
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.subheader(f"🔍 Analysis for {selected_file}")
+            st.write(f"**Total Statements:** {len(parsed_data['statements'])}")
+            st.write(f"**Unique Tables Found:** {len(parsed_data['tables'])}")
+            st.write(f"**Unique Fields Found:** {len(parsed_data['fields'])}")
+            
+            # Statement types
+            if parsed_data['statement_types']:
+                st.subheader("📊 Statement Types")
+                stmt_type_data = list(parsed_data['statement_types'].items())
+                stmt_type_df = pd.DataFrame(stmt_type_data)
+                stmt_type_df.columns = ['Statement Type', 'Count']
+                st.dataframe(stmt_type_df, use_container_width=True)
+        
+        with col2:
+            st.subheader("🗂️ Tables and Fields Found")
+            
+            # Tables found
+            if parsed_data['tables']:
+                with st.expander(f"📋 Tables Found ({len(parsed_data['tables'])})", expanded=True):
+                    tables_list = sorted(list(parsed_data['tables']))
+                    for i in range(0, len(tables_list), 3):
+                        cols = st.columns(3)
+                        for j, table in enumerate(tables_list[i:i+3]):
+                            if j < len(cols):
+                                cols[j].write(f"• {table}")
+            
+            # Fields found
+            if parsed_data['fields']:
+                with st.expander(f"🏷️ Fields Found ({len(parsed_data['fields'])})", expanded=False):
+                    fields_list = sorted(list(parsed_data['fields']))
+                    for i in range(0, len(fields_list), 3):
+                        cols = st.columns(3)
+                        for j, field in enumerate(fields_list[i:i+3]):
+                            if j < len(cols):
+                                cols[j].write(f"• {field}")
+        
+        # SQL Statements Preview
+        st.subheader("📝 SQL Statements Preview")
+        if parsed_data['statements']:
+            for i, stmt in enumerate(parsed_data['statements'][:5]):  # Show first 5 statements
+                with st.expander(f"Statement {i+1}"):
+                    st.code(stmt, language='sql')
+            
+            if len(parsed_data['statements']) > 5:
+                st.info(f"Showing first 5 of {len(parsed_data['statements'])} statements")
+        else:
+            st.warning("No SQL statements found or parsed.")
 
 def display_individual_file_analysis(all_parsed_data, schema_df):
     """Display individual file analysis"""
@@ -944,6 +1198,317 @@ def generate_html_report(all_parsed_data, combined_tables, combined_fields, sche
     html_content += f"""
         <div class="footer">
             <p>Report generated by SQL Schema Comparison Tool</p>
+            <p>Analysis completed on {timestamp}</p>
+        </div>
+    </div>
+</body>
+</html>
+"""
+    
+    return html_content
+
+def generate_sql_inventory_html_report(all_parsed_data, combined_tables, combined_fields):
+    """Generate a standalone HTML report for SQL inventory only"""
+    
+    # Calculate summary statistics
+    total_files = len(all_parsed_data)
+    total_unique_tables = len(combined_tables)
+    total_unique_fields = len(combined_fields)
+    total_statements = sum(len(data.get('statements', [])) for data in all_parsed_data.values())
+    
+    # Generate timestamp
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    
+    html_content = f"""
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SQL Inventory Report</title>
+    <style>
+        body {{
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            line-height: 1.6;
+            margin: 0;
+            padding: 20px;
+            background-color: #f8f9fa;
+            color: #333;
+        }}
+        .container {{
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }}
+        h1 {{
+            color: #2c3e50;
+            text-align: center;
+            margin-bottom: 10px;
+            border-bottom: 3px solid #3498db;
+            padding-bottom: 15px;
+        }}
+        .timestamp {{
+            text-align: center;
+            color: #7f8c8d;
+            margin-bottom: 30px;
+            font-style: italic;
+        }}
+        .summary-grid {{
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin: 30px 0;
+        }}
+        .metric-card {{
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 8px;
+            text-align: center;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }}
+        .metric-value {{
+            font-size: 2em;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }}
+        .metric-label {{
+            font-size: 0.9em;
+            opacity: 0.9;
+        }}
+        .section {{
+            margin: 40px 0;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border-left: 4px solid #3498db;
+        }}
+        .section h2 {{
+            color: #2c3e50;
+            margin-top: 0;
+            margin-bottom: 20px;
+        }}
+        table {{
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            background: white;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }}
+        th, td {{
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }}
+        th {{
+            background: #34495e;
+            color: white;
+            font-weight: 600;
+        }}
+        tr:hover {{
+            background-color: #f5f5f5;
+        }}
+        .file-section {{
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            background: white;
+        }}
+        .file-header {{
+            font-weight: bold;
+            color: #2c3e50;
+            margin-bottom: 10px;
+            font-size: 1.1em;
+        }}
+        .footer {{
+            text-align: center;
+            margin-top: 50px;
+            padding-top: 20px;
+            border-top: 1px solid #ddd;
+            color: #7f8c8d;
+        }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📋 SQL Inventory Report</h1>
+        <div class="timestamp">Generated on {timestamp}</div>
+        
+        <div class="summary-grid">
+            <div class="metric-card">
+                <div class="metric-value">{total_files}</div>
+                <div class="metric-label">SQL Files Analyzed</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-value">{total_unique_tables}</div>
+                <div class="metric-label">Unique Tables Found</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-value">{total_unique_fields}</div>
+                <div class="metric-label">Unique Fields Found</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-value">{total_statements}</div>
+                <div class="metric-label">Total SQL Statements</div>
+            </div>
+        </div>
+"""
+
+    # Tables inventory section
+    html_content += """
+        <div class="section">
+            <h2>📋 Complete Tables Inventory</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Table Name</th>
+                        <th>Total Occurrences</th>
+                        <th>Found in Files</th>
+                        <th>Source Files</th>
+                    </tr>
+                </thead>
+                <tbody>
+"""
+    
+    # Create table inventory
+    table_inventory = []
+    for table in sorted(combined_tables):
+        source_files = []
+        total_occurrences = 0
+        for file_name, parsed_data in all_parsed_data.items():
+            if table in parsed_data.get('table_occurrences', {}):
+                count = parsed_data['table_occurrences'][table]
+                source_files.append(f"{file_name} ({count})")
+                total_occurrences += count
+        
+        table_inventory.append({
+            'table': table,
+            'total_occurrences': total_occurrences,
+            'files_count': len(source_files),
+            'source_files': ', '.join(source_files)
+        })
+    
+    # Sort by total occurrences
+    table_inventory.sort(key=lambda x: x['total_occurrences'], reverse=True)
+    
+    for table_data in table_inventory:
+        html_content += f"""
+                    <tr>
+                        <td>{table_data['table']}</td>
+                        <td>{table_data['total_occurrences']}</td>
+                        <td>{table_data['files_count']}</td>
+                        <td>{table_data['source_files']}</td>
+                    </tr>
+"""
+    
+    html_content += """
+                </tbody>
+            </table>
+        </div>
+"""
+
+    # Fields inventory section
+    html_content += """
+        <div class="section">
+            <h2>🏷️ Complete Fields Inventory</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Field Name</th>
+                        <th>Total Occurrences</th>
+                        <th>Found in Files</th>
+                        <th>Source Files</th>
+                    </tr>
+                </thead>
+                <tbody>
+"""
+    
+    # Create field inventory
+    field_inventory = []
+    for field in sorted(combined_fields):
+        source_files = []
+        total_occurrences = 0
+        for file_name, parsed_data in all_parsed_data.items():
+            if field in parsed_data.get('field_occurrences', {}):
+                count = parsed_data['field_occurrences'][field]
+                source_files.append(f"{file_name} ({count})")
+                total_occurrences += count
+        
+        field_inventory.append({
+            'field': field,
+            'total_occurrences': total_occurrences,
+            'files_count': len(source_files),
+            'source_files': ', '.join(source_files)
+        })
+    
+    # Sort by total occurrences
+    field_inventory.sort(key=lambda x: x['total_occurrences'], reverse=True)
+    
+    for field_data in field_inventory:
+        html_content += f"""
+                    <tr>
+                        <td>{field_data['field']}</td>
+                        <td>{field_data['total_occurrences']}</td>
+                        <td>{field_data['files_count']}</td>
+                        <td>{field_data['source_files']}</td>
+                    </tr>
+"""
+    
+    html_content += """
+                </tbody>
+            </table>
+        </div>
+"""
+
+    # Individual file breakdown
+    html_content += """
+        <div class="section">
+            <h2>📈 File-by-File Breakdown</h2>
+"""
+    
+    for file_name, parsed_data in all_parsed_data.items():
+        html_content += f"""
+            <div class="file-section">
+                <div class="file-header">📄 {file_name}</div>
+                <p><strong>SQL Statements:</strong> {len(parsed_data['statements'])}</p>
+                <p><strong>Tables Found:</strong> {len(parsed_data['tables'])}</p>
+                <p><strong>Fields Found:</strong> {len(parsed_data['fields'])}</p>
+                
+                <h4>Tables in this file:</h4>
+                <p>{', '.join(sorted(parsed_data['tables'])) if parsed_data['tables'] else 'No tables found'}</p>
+                
+                <h4>Top 10 Fields in this file:</h4>
+                <p>
+"""
+        
+        # Show top 10 fields for this file
+        file_fields = parsed_data.get('field_occurrences', {})
+        if file_fields:
+            sorted_fields = sorted(file_fields.items(), key=lambda x: x[1], reverse=True)[:10]
+            field_list = [f"{field} ({count})" for field, count in sorted_fields]
+            html_content += ', '.join(field_list)
+        else:
+            html_content += "No fields found"
+        
+        html_content += """
+                </p>
+            </div>
+"""
+    
+    html_content += """
+        </div>
+"""
+
+    # Footer
+    html_content += f"""
+        <div class="footer">
+            <p>SQL Inventory Report generated by SQL Schema Comparison Tool</p>
             <p>Analysis completed on {timestamp}</p>
         </div>
     </div>
