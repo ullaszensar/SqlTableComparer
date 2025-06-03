@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import io
+from datetime import datetime
 from sql_parser import SQLParser
 from schema_analyzer import SchemaAnalyzer
 
@@ -91,6 +92,20 @@ def main():
             
             with tab4:
                 display_individual_file_analysis(all_parsed_data, schema_df)
+            
+            # Add HTML report generation button
+            st.markdown("---")
+            col1, col2, col3 = st.columns([1, 1, 1])
+            with col2:
+                if st.button("📄 Generate Complete HTML Report", use_container_width=True):
+                    html_report = generate_html_report(all_parsed_data, combined_tables, combined_fields, schema_df)
+                    st.download_button(
+                        label="📥 Download HTML Report",
+                        data=html_report,
+                        file_name="sql_analysis_report.html",
+                        mime="text/html",
+                        use_container_width=True
+                    )
                 
         except Exception as e:
             st.error(f"❌ Error processing files: {str(e)}")
@@ -531,6 +546,412 @@ def display_usage_statistics(results):
                 file_name="field_usage_stats.csv",
                 mime="text/csv"
             )
+
+def generate_html_report(all_parsed_data, combined_tables, combined_fields, schema_df):
+    """Generate a comprehensive HTML report"""
+    
+    # Calculate summary statistics
+    total_files = len(all_parsed_data)
+    total_unique_tables = len(combined_tables)
+    total_unique_fields = len(combined_fields)
+    
+    # Generate combined data for schema analysis
+    combined_parsed_data = combine_all_parsed_data(all_parsed_data)
+    analyzer = SchemaAnalyzer()
+    analysis_results = analyzer.analyze(combined_parsed_data, schema_df)
+    
+    comparison_data = analysis_results['comparison_report']
+    found_items = len(comparison_data[comparison_data['found'] == True]) if not comparison_data.empty else 0
+    total_schema_items = len(comparison_data) if not comparison_data.empty else 0
+    
+    # Generate timestamp
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    
+    html_content = f"""
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SQL Schema Comparison Report</title>
+    <style>
+        body {{
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            line-height: 1.6;
+            margin: 0;
+            padding: 20px;
+            background-color: #f8f9fa;
+            color: #333;
+        }}
+        .container {{
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }}
+        h1 {{
+            color: #2c3e50;
+            text-align: center;
+            margin-bottom: 10px;
+            border-bottom: 3px solid #3498db;
+            padding-bottom: 15px;
+        }}
+        .timestamp {{
+            text-align: center;
+            color: #7f8c8d;
+            margin-bottom: 30px;
+            font-style: italic;
+        }}
+        .summary-grid {{
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin: 30px 0;
+        }}
+        .metric-card {{
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 8px;
+            text-align: center;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }}
+        .metric-value {{
+            font-size: 2em;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }}
+        .metric-label {{
+            font-size: 0.9em;
+            opacity: 0.9;
+        }}
+        .section {{
+            margin: 40px 0;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border-left: 4px solid #3498db;
+        }}
+        .section h2 {{
+            color: #2c3e50;
+            margin-top: 0;
+            margin-bottom: 20px;
+        }}
+        table {{
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            background: white;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }}
+        th, td {{
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }}
+        th {{
+            background: #34495e;
+            color: white;
+            font-weight: 600;
+        }}
+        tr:hover {{
+            background-color: #f5f5f5;
+        }}
+        .status-found {{
+            background-color: #d4edda;
+            color: #155724;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-weight: bold;
+        }}
+        .status-not-found {{
+            background-color: #f8d7da;
+            color: #721c24;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-weight: bold;
+        }}
+        .file-section {{
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            background: white;
+        }}
+        .file-header {{
+            font-weight: bold;
+            color: #2c3e50;
+            margin-bottom: 10px;
+            font-size: 1.1em;
+        }}
+        .code-block {{
+            background: #2c3e50;
+            color: #ecf0f1;
+            padding: 15px;
+            border-radius: 6px;
+            overflow-x: auto;
+            margin: 10px 0;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+        }}
+        .footer {{
+            text-align: center;
+            margin-top: 50px;
+            padding-top: 20px;
+            border-top: 1px solid #ddd;
+            color: #7f8c8d;
+        }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔍 SQL Schema Comparison Report</h1>
+        <div class="timestamp">Generated on {timestamp}</div>
+        
+        <div class="summary-grid">
+            <div class="metric-card">
+                <div class="metric-value">{total_files}</div>
+                <div class="metric-label">SQL Files Analyzed</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-value">{total_unique_tables}</div>
+                <div class="metric-label">Unique Tables Found</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-value">{total_unique_fields}</div>
+                <div class="metric-label">Unique Fields Found</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-value">{found_items}/{total_schema_items}</div>
+                <div class="metric-label">Schema Items Found</div>
+            </div>
+        </div>
+"""
+
+    # Files and Tables Analysis Section
+    html_content += """
+        <div class="section">
+            <h2>📁 Files & Tables Analysis</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>File Name</th>
+                        <th>Table Name</th>
+                        <th>Occurrences</th>
+                    </tr>
+                </thead>
+                <tbody>
+"""
+    
+    for file_name, parsed_data in all_parsed_data.items():
+        tables = parsed_data.get('table_occurrences', {})
+        if tables:
+            for table, count in tables.items():
+                html_content += f"""
+                    <tr>
+                        <td>{file_name}</td>
+                        <td>{table}</td>
+                        <td>{count}</td>
+                    </tr>
+"""
+        else:
+            html_content += f"""
+                    <tr>
+                        <td>{file_name}</td>
+                        <td><em>No tables found</em></td>
+                        <td>0</td>
+                    </tr>
+"""
+    
+    html_content += """
+                </tbody>
+            </table>
+        </div>
+"""
+
+    # Table Usage Summary
+    html_content += """
+        <div class="section">
+            <h2>📋 Table Usage Summary</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Table Name</th>
+                        <th>Files Using</th>
+                        <th>Total Occurrences</th>
+                        <th>Files Details</th>
+                    </tr>
+                </thead>
+                <tbody>
+"""
+    
+    for table in sorted(combined_tables):
+        files_using_table = []
+        total_occurrences = 0
+        for file_name, parsed_data in all_parsed_data.items():
+            if table in parsed_data.get('table_occurrences', {}):
+                count = parsed_data['table_occurrences'][table]
+                files_using_table.append(f"{file_name} ({count})")
+                total_occurrences += count
+        
+        html_content += f"""
+                    <tr>
+                        <td>{table}</td>
+                        <td>{len(files_using_table)}</td>
+                        <td>{total_occurrences}</td>
+                        <td>{', '.join(files_using_table)}</td>
+                    </tr>
+"""
+    
+    html_content += """
+                </tbody>
+            </table>
+        </div>
+"""
+
+    # Fields Analysis Section
+    html_content += """
+        <div class="section">
+            <h2>🏷️ Field Usage Summary (Top 50)</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Field Name</th>
+                        <th>Files Using</th>
+                        <th>Total Occurrences</th>
+                        <th>Files Details</th>
+                    </tr>
+                </thead>
+                <tbody>
+"""
+    
+    # Get top 50 fields by total occurrences
+    field_usage_summary = []
+    for field in combined_fields:
+        files_using_field = []
+        total_occurrences = 0
+        for file_name, parsed_data in all_parsed_data.items():
+            if field in parsed_data.get('field_occurrences', {}):
+                count = parsed_data['field_occurrences'][field]
+                files_using_field.append(f"{file_name} ({count})")
+                total_occurrences += count
+        
+        field_usage_summary.append({
+            'field': field,
+            'files_count': len(files_using_field),
+            'total_occurrences': total_occurrences,
+            'files_details': ', '.join(files_using_field)
+        })
+    
+    # Sort by total occurrences and take top 50
+    field_usage_summary.sort(key=lambda x: x['total_occurrences'], reverse=True)
+    for field_data in field_usage_summary[:50]:
+        html_content += f"""
+                    <tr>
+                        <td>{field_data['field']}</td>
+                        <td>{field_data['files_count']}</td>
+                        <td>{field_data['total_occurrences']}</td>
+                        <td>{field_data['files_details']}</td>
+                    </tr>
+"""
+    
+    html_content += """
+                </tbody>
+            </table>
+        </div>
+"""
+
+    # Schema Comparison Section
+    if not comparison_data.empty:
+        html_content += """
+        <div class="section">
+            <h2>📊 Schema Comparison Report</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Table Name</th>
+                        <th>Field Name</th>
+                        <th>Status</th>
+                        <th>Table Found</th>
+                        <th>Field Found</th>
+                        <th>Total Occurrences</th>
+                    </tr>
+                </thead>
+                <tbody>
+"""
+        
+        for _, row in comparison_data.iterrows():
+            status_class = "status-found" if row['found'] else "status-not-found"
+            status_text = "Found" if row['found'] else "Not Found"
+            
+            html_content += f"""
+                    <tr>
+                        <td>{row['table_name']}</td>
+                        <td>{row['field_name']}</td>
+                        <td><span class="{status_class}">{status_text}</span></td>
+                        <td>{'Yes' if row['table_found'] else 'No'}</td>
+                        <td>{'Yes' if row['field_found'] else 'No'}</td>
+                        <td>{row['occurrences']}</td>
+                    </tr>
+"""
+        
+        html_content += """
+                </tbody>
+            </table>
+        </div>
+"""
+
+    # Individual File Analysis
+    html_content += """
+        <div class="section">
+            <h2>📈 Individual File Analysis</h2>
+"""
+    
+    for file_name, parsed_data in all_parsed_data.items():
+        html_content += f"""
+            <div class="file-section">
+                <div class="file-header">📄 {file_name}</div>
+                <p><strong>Statements:</strong> {len(parsed_data['statements'])}</p>
+                <p><strong>Tables Found:</strong> {len(parsed_data['tables'])}</p>
+                <p><strong>Fields Found:</strong> {len(parsed_data['fields'])}</p>
+                
+                <h4>Tables in this file:</h4>
+                <p>{', '.join(sorted(parsed_data['tables'])) if parsed_data['tables'] else 'No tables found'}</p>
+                
+                <h4>Sample SQL Statements:</h4>
+"""
+        
+        # Show first 3 statements for each file
+        for i, stmt in enumerate(parsed_data['statements'][:3]):
+            html_content += f"""
+                <div class="code-block">{stmt}</div>
+"""
+        
+        if len(parsed_data['statements']) > 3:
+            html_content += f"<p><em>... and {len(parsed_data['statements']) - 3} more statements</em></p>"
+        
+        html_content += "</div>"
+    
+    html_content += """
+        </div>
+"""
+
+    # Footer
+    html_content += f"""
+        <div class="footer">
+            <p>Report generated by SQL Schema Comparison Tool</p>
+            <p>Analysis completed on {timestamp}</p>
+        </div>
+    </div>
+</body>
+</html>
+"""
+    
+    return html_content
 
 if __name__ == "__main__":
     main()
