@@ -292,9 +292,9 @@ def display_files_tables_analysis(all_parsed_data, combined_tables):
         st.subheader("📊 Detailed Analysis")
         filter_col1, filter_col2 = st.columns(2)
         with filter_col1:
-            selected_file = st.selectbox("Filter by File", ["All Files"] + sorted(list(all_parsed_data.keys())))
+            selected_file = st.selectbox("Filter by File", ["All Files"] + sorted(list(all_parsed_data.keys())), key="tables_file_filter")
         with filter_col2:
-            selected_table = st.selectbox("Filter by Table", ["All Tables"] + sorted(list(combined_tables)))
+            selected_table = st.selectbox("Filter by Table", ["All Tables"] + sorted(list(combined_tables)), key="tables_table_filter")
         
         # Apply filters
         filtered_df = analysis_df.copy()
@@ -514,7 +514,7 @@ def display_complete_sql_inventory(all_parsed_data, combined_tables, combined_fi
         with col1:
             field_search = st.text_input("🔍 Search Fields", placeholder="Type to filter fields...")
         with col2:
-            show_top = st.selectbox("Show Top", [50, 100, 200, 500, "All"], index=0)
+            show_top = st.selectbox("Show Top", [50, 100, 200, 500, "All"], index=0, key="inventory_show_top")
         
         # Apply search filter
         if field_search:
@@ -557,7 +557,7 @@ def display_individual_file_analysis_no_schema(all_parsed_data):
     st.header("📈 Individual File Analysis")
     
     # File selector
-    selected_file = st.selectbox("Select File for Detailed Analysis", list(all_parsed_data.keys()))
+    selected_file = st.selectbox("Select File for Detailed Analysis", list(all_parsed_data.keys()), key="individual_file_no_schema")
     
     if selected_file:
         parsed_data = all_parsed_data[selected_file]
@@ -619,7 +619,7 @@ def display_individual_file_analysis(all_parsed_data, schema_df):
     st.header("📈 Individual File Analysis")
     
     # File selector
-    selected_file = st.selectbox("Select File for Detailed Analysis", list(all_parsed_data.keys()))
+    selected_file = st.selectbox("Select File for Detailed Analysis", list(all_parsed_data.keys()), key="individual_file_with_schema")
     
     if selected_file:
         parsed_data = all_parsed_data[selected_file]
@@ -718,9 +718,9 @@ def display_comparison_report(results):
     # Filter options
     filter_col1, filter_col2 = st.columns(2)
     with filter_col1:
-        status_filter = st.selectbox("Filter by Status", ["All", "Found", "Not Found"])
+        status_filter = st.selectbox("Filter by Status", ["All", "Found", "Not Found"], key="schema_status_filter")
     with filter_col2:
-        table_filter = st.selectbox("Filter by Table", ["All"] + sorted(comparison_data['table_name'].unique().tolist()))
+        table_filter = st.selectbox("Filter by Table", ["All"] + sorted(comparison_data['table_name'].unique().tolist()), key="schema_table_filter")
     
     # Apply filters
     filtered_data = comparison_data.copy()
