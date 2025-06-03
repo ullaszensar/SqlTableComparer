@@ -92,7 +92,7 @@ def main():
                 combined_parsed_data = combine_all_parsed_data(all_parsed_data)
                 analyzer = SchemaAnalyzer()
                 analysis_results = analyzer.analyze(combined_parsed_data, schema_df)
-                display_comparison_report(analysis_results)
+                display_comparison_report(analysis_results, "tab4")
             
             with tab5:
                 display_individual_file_analysis(all_parsed_data, schema_df)
@@ -670,7 +670,7 @@ def display_individual_file_analysis(all_parsed_data, schema_df):
         
         # Schema comparison for this file
         st.subheader("📊 Schema Comparison for This File")
-        display_comparison_report(analysis_results)
+        display_comparison_report(analysis_results, "individual")
         
         # SQL Statements Preview
         st.subheader("📝 SQL Statements Preview")
@@ -689,7 +689,7 @@ def validate_schema_format(df):
     required_columns = ['table_name', 'field_name']
     return all(col in df.columns for col in required_columns)
 
-def display_comparison_report(results):
+def display_comparison_report(results, key_prefix="main"):
     """Display the comparison report between reference schema and SQL content"""
     st.header("📊 Schema Comparison Report")
     
@@ -718,9 +718,9 @@ def display_comparison_report(results):
     # Filter options
     filter_col1, filter_col2 = st.columns(2)
     with filter_col1:
-        status_filter = st.selectbox("Filter by Status", ["All", "Found", "Not Found"], key="schema_status_filter")
+        status_filter = st.selectbox("Filter by Status", ["All", "Found", "Not Found"], key=f"{key_prefix}_schema_status_filter")
     with filter_col2:
-        table_filter = st.selectbox("Filter by Table", ["All"] + sorted(comparison_data['table_name'].unique().tolist()), key="schema_table_filter")
+        table_filter = st.selectbox("Filter by Table", ["All"] + sorted(comparison_data['table_name'].unique().tolist()), key=f"{key_prefix}_schema_table_filter")
     
     # Apply filters
     filtered_data = comparison_data.copy()
