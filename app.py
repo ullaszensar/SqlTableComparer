@@ -1483,14 +1483,14 @@ def generate_sql_inventory_html_report(all_parsed_data, combined_tables, combine
                 <h4>Tables in this file:</h4>
                 <p>{', '.join(sorted(parsed_data['tables'])) if parsed_data['tables'] else 'No tables found'}</p>
                 
-                <h4>Top 10 Fields in this file:</h4>
+                <h4>All Fields in this file:</h4>
                 <p>
 """
         
-        # Show top 10 fields for this file
+        # Show all fields for this file
         file_fields = parsed_data.get('field_occurrences', {})
         if file_fields:
-            sorted_fields = sorted(file_fields.items(), key=lambda x: x[1], reverse=True)[:10]
+            sorted_fields = sorted(file_fields.items(), key=lambda x: x[1], reverse=True)
             field_list = [f"{field} ({count})" for field, count in sorted_fields]
             html_content += ', '.join(field_list)
         else:
